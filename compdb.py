@@ -390,7 +390,7 @@ def parseCmdLine():
     import getopt
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "ahp:nK", ["auto", "help", "prefix=", "no-removing", "no-foreign-key"])           
+        opts, args = getopt.getopt(sys.argv[1:], "ahp:nkK", ["auto", "help", "prefix=", "no-removing", "foreign-key", "no-foreign-key"])           
     except getopt.GetoptError: usage()
     
     comp = CompDB()
