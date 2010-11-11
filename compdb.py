@@ -12,10 +12,21 @@ class CompDB:
         reports which table, fields, PK, unique or FK has changed
     '''
     
-    source_file_name = ''
-    target_file_name = ''
-    table_prefix = ''
-    format = 'sql'
+    def __init__(self):
+        self.format = 'sql'
+        self.source_file_name = ''
+        self.target_file_name = ''
+        self.table_prefix = ''
+        self.no_loss = ''
+        self.no_foreign_key = True
+    
+    def set_no_foreign_key(self, no_foreign_key):
+        self.no_foreign_key = no_foreign_key
+
+    def set_no_removing(self, no_removing):
+        self.no_loss = ''
+        if no_removing:
+            self.no_loss = '-- ' 
     
     def set_files(self, source_file_name, target_file_name):
         self.source_file_name = source_file_name
@@ -43,17 +54,35 @@ class CompDB:
             else:
                 diff_count += 1
                 if (self.format == 'sql'):
-                    print 'DROP TABLE `%s`;' % table_name
+                    print '%sDROP TABLE `%s`;' % (self.no_loss, table_name)
 
         for table_name in tables_target:
             if table_name not in tables_source:
                 diff_count += 1
                 print 'CREATE TABLE `%s` (' % table_name
-                self.compare_tables(None, tables_target[table_name])
+                self.compare_tables(None, tables_target[table_name], True)
                 print ');'
+                self.compare_tables(None, tables_target[table_name], False)
 
-    def compare_tables(self, source, target):
+    def compare_tables(self, source, target, create_statement=False):
+        ''' source is None means that we need to create the table
+            compare table works in two phases: 
+                * within a create statement (e.g. declare the fields and PK) 
+                * after the create statement (e.g. add a field or an index)
+            
+            create_statement = True always implies that source is None
+            
+            There are three cases to consider for each difference:
+                1. source is not None
+                source is None:
+                    2. create_statement
+                    3. not create_statement
+            But only two of those cases should ever be treated 
+            (2 and 3 are mutually exclusive).
+        '''
         diff_count = 0
+        after_create_statement = (source is None and not create_statement)
+        outside_create_statement = (source is not None or after_create_statement)
         # 2.1. compare fields
         if source is not None:
             for field_name in source['fields']:
@@ -63,35 +92,34 @@ class CompDB:
                         print "ALTER TABLE `%s` MODIFY COLUMN %s;" % (source['name'], self.describe_field(target['fields'][field_name]))
                 else:
                     diff_count += 1
-                    print 'ALTER TABLE `%s` DROP COLUMN `%s`;' % (source['name'], field_name)
+                    print '%sALTER TABLE `%s` DROP COLUMN `%s`;' % (self.no_loss, source['name'], field_name)
 
         for field_name in target['fields']:
             if source is not None:
                 if field_name not in source['fields']:
                     diff_count += 1
-                    print 'ALTER TABLE %s ADD COLUMN %s;' % (source['name'], self.describe_field(target['fields'][field_name]))
+                    print 'ALTER TABLE `%s` ADD COLUMN %s;' % (source['name'], self.describe_field(target['fields'][field_name]))
             else:
-                print '\t%s,' % self.describe_field(target['fields'][field_name])
+                if create_statement:
+                    print '\t%s,' % self.describe_field(target['fields'][field_name])
         
         # 2.2. compare fk
-        if source is not None:
-            for key_name in source['fk']:
-                if key_name not in target['fk']:
-                    diff_count += 1
-                    print '-- - FOREIGN KEY: %s.%s = %s' % (source['name'], key_name, self.describe_foreign_key(source['fk'][key_name]))
-                else:
-                    if source['fk'][key_name] != target['fk'][key_name]:
+        if not self.no_foreign_key:
+            if source is not None:
+                for key_hash in source['fk']:
+                    if key_hash not in target['fk']:
                         diff_count += 1
-                        print '-- FOREIGN KEY: %s.%s\n\t%s \n\t=> \n\t%s' % (source['name'], key_name, self.describe_foreign_key(source['fk'][key_name]), self.describe_foreign_key(target['fk'][key_name]))
-        
-            for key_name in target['fk']:
-                if key_name not in source['fk']:
-                    diff_count += 1
-                    if (self.format == 'default'):
-                        print '-- + FOREIGN KEY: %s.%s = %s' % (source['name'], key_name, self.describe_foreign_key(target['fk'][key_name]))
-                    
-            # 2.3. compare uk
-            for key_type in [{'name': 'UNIQUE INDEX', 'id': 'uk'}, {'name': 'FULLTEXT KEY', 'id': 'ft'}]:
+                        print '%sALTER TABLE `%s` DROP FOREIGN KEY `%s`;' % (self.no_loss, target['name'], target['fk'][key_hash]['name'])
+
+            if outside_create_statement:
+                for key_hash in target['fk']:
+                    if source is None or key_hash not in source['fk']:
+                        diff_count += 1
+                        print 'ALTER TABLE `%s` ADD CONSTRAINT `%s` FOREIGN KEY (%s) REFERENCES `%s` (%s);' % (target['name'], target['fk'][key_hash]['name'], self.get_quoted_fields(target['fk'][key_hash]['k']), target['fk'][key_hash]['table'], self.get_quoted_fields(target['fk'][key_hash]['fk'])) 
+                        
+        # 2.3. compare uk
+        for key_type in [{'name': 'UNIQUE INDEX', 'id': 'uk'}, {'name': 'FULLTEXT KEY', 'id': 'ft'}]:
+            if source is not None:
                 for key_name in source[key_type['id']]:
                     if key_name not in target[key_type['id']]:
                         diff_count += 1
@@ -100,24 +128,28 @@ class CompDB:
                         if index_name == '':
                             print '-- WARNING: UNKNONW INDEX NAME: ALTER TABLE %s DROP INDEX ???;' % source['name']
                         else:
-                            print 'ALTER TABLE %s DROP INDEX `%s`;' % (source['name'], source[key_type['id']][key_name]['name'])
-                
+                            print '%sALTER TABLE %s DROP INDEX `%s`;' % (self.no_loss, source['name'], source[key_type['id']][key_name]['name'])
+            
+            if outside_create_statement:
                 for key_name in target[key_type['id']]:
-                    if key_name not in source[key_type['id']]:
+                    if source is None or key_name not in source[key_type['id']]:
                         diff_count += 1
                         index_name = target[key_type['id']][key_name]['name']
                         if index_name == '': index_name = key_name
                         print 'ALTER TABLE %s ADD %s `%s` (%s);' % (target['name'], key_type['name'], index_name, ', '.join(target[key_type['id']][key_name]['fields']))
-                    
+                        
         # 2.4. compare pk
         if source is not None:
             if source['pk'] != target['pk']: 
                 diff_count += 1
-                print '-- PRIMARY KEY: %s \n\t%s \n\t=> \n\t%s' % (source['name'], ', '.join(source['pk']), ', '.join(target['pk']))
+                #print '-- PRIMARY KEY: %s \n\t%s \n\t=> \n\t%s' % (source['name'], ', '.join(source['pk']), ', '.join(target['pk']))
+                print 'ALTER TABLE %s DROP PRIMARY KEY;' % source['name']
+                print 'ALTER TABLE %s ADD PRIMARY KEY (%s);' % (source['name'], ', '.join(target['pk']))
         else:
-            if len(target['pk']):
-                diff_count += 1
-                print '\tPRIMARY KEY (%s)' % self.get_quoted_fields(target['pk'])
+            if create_statement:
+                if len(target['pk']):
+                    diff_count += 1
+                    print '\tPRIMARY KEY (%s)' % self.get_quoted_fields(target['pk'])
         
         return diff_count
         
@@ -190,7 +222,10 @@ class CompDB:
                     for field in key_fields:
                         target_fields.append(field.strip(' ').strip('`'))
 
-                    tables[foreign_key.group(1)]['fk'][foreign_key.group(2)] = {'table': foreign_key.group(4), 'k': source_fields, 'fk': target_fields}
+                    fk_table = self.clean_field_name(foreign_key.group(4))
+                    fkid = ''.join(source_fields) + '->' + fk_table + '.' + ''.join(target_fields)
+                    tables[foreign_key.group(1)]['fk'][fkid] = {'table': fk_table, 'k': source_fields, 'fk': target_fields, 'name': self.clean_field_name(foreign_key.group(2))}
+                    #['fk'][foreign_key.group(2)] = {'table': foreign_key.group(4), 'k': source_fields, 'fk': target_fields}
                     
             else:
                 # statements to ignore
@@ -272,13 +307,16 @@ class CompDB:
                     key_fields = re.split(',', foreign_key.group(2))
                     source_fields = []
                     for field in key_fields:
-                        source_fields.append(field.strip(' ').strip('`'))
+                        source_fields.append(self.clean_field_name(field))
                     key_fields = re.split(',', foreign_key.group(4))
                     target_fields = []
                     for field in key_fields:
-                        target_fields.append(field.strip(' ').strip('`'))
+                        target_fields.append(self.clean_field_name(field))
 
-                    current_table['fk'][foreign_key.group(1)] = {'table': foreign_key.group(3), 'k': source_fields, 'fk': target_fields}
+                    #current_table['fk'][foreign_key.group(1)] = {'table': foreign_key.group(3), 'k': source_fields, 'fk': target_fields}
+                    fk_table = self.clean_field_name(foreign_key.group(3))
+                    fkid = ''.join(source_fields) + '->' + fk_table + '.' + ''.join(target_fields)
+                    current_table['fk'][fkid] = {'table': fk_table, 'k': source_fields, 'fk': target_fields, 'name': self.clean_field_name(foreign_key.group(1))}
                 
                 # TODO: KEY `plays_text_sample_text_id` (`text_id`),
                 
@@ -300,6 +338,9 @@ class CompDB:
         
         return tables
     
+    def clean_field_name(self, field_name):
+        return field_name.strip(' ').strip('`')
+    
     def filter_table_dic(self, tables={}, table_prefix=''):
         if tables is None or table_prefix == '': return
         for table_name in tables.keys():
@@ -318,6 +359,12 @@ Options:
                    between your current database and your django model.
                    You don't need to provide OLD_SCHEMA.sql and NEW_SCHEMA.sql 
                    arguments.
+                   -a makes -p mandatory. The -p argument must match the name 
+                   of an application installed in your Django project.
+                   e.g. python compdb.py -a -p MY_APP_NAME
+  -k               Enables detection of differences in the foreign keys.
+                   This feature is disabled by default as the constraint names 
+                   may be different between the two databases. 
   -h               show this help screen
 
 ---
@@ -343,7 +390,7 @@ def parseCmdLine():
     import getopt
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "ahp:f:", ["auto", "help", "prefix=", "format="])           
+        opts, args = getopt.getopt(sys.argv[1:], "ahp:nK", ["auto", "help", "prefix=", "no-removing", "no-foreign-key"])           
     except getopt.GetoptError: usage()
     
     comp = CompDB()
@@ -353,10 +400,14 @@ def parseCmdLine():
         if opt in ("-h", "--help"): usage()
         elif opt in ('-p', "--prefix"):
             comp.set_table_prefix(arg)            
-        elif opt in ("-f", "--format"):
-            comp.set_format(arg)
         elif opt in ("-a", "--auto"):
             auto = True
+        elif opt in ("-n", "--no-removing"):
+            comp.set_no_removing(True)
+        elif opt in ("-K", "--no-foreign-key"):
+            comp.set_no_foreign_key(True)
+        elif opt in ("-k", "--foreign-key"):
+            comp.set_no_foreign_key(False)
     
     if len(args) == 2 and not auto:
         comp.set_files(args[0], args[1])
