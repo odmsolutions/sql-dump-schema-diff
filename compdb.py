@@ -172,7 +172,8 @@ class CompDB:
     def get_quoted_fields(self, fields):
         ret = ''
         for field in fields:
-            if len(ret) > 0: ret = ret + ', '
+            if len(ret) > 0:
+                ret = ret + ', '
             ret = ret + u'`%s`' % field
         return ret
             
@@ -198,7 +199,7 @@ class CompDB:
                 continue
             if re.match('/\*.*\*/', line):
                 continue
-            if (current_table is None):
+            if current_table is None:
                 # statements to ignore
                 if re.match('(?i)\s*DROP TABLE', line):
                     detected = True
@@ -211,7 +212,7 @@ class CompDB:
                     current_table = {'name' : match.group(1), 'fields': {}, 'pk': [], 'fk': {}, 'uk': {}, 'ft': {}}
                 # ALTER TABLE `plays_text_sample` ADD CONSTRAINT text_id_refs_id_4aaf935 FOREIGN KEY (`text_id`) REFERENCES `plays_text` (`id`);
                 foreign_key = re.match('(?i)\s*ALTER TABLE\s+`([^`]+)`\s+ADD CONSTRAINT\s+(.+)\s+FOREIGN KEY\s+\(([^)]+)\)\s+REFERENCES\s+`([^`]+)`\s+\(([^)]+)\)', line)
-                if (foreign_key):
+                if foreign_key:
                     detected = True
                     # split the fields
                     key_fields = re.split(',', foreign_key.group(3))
@@ -246,15 +247,15 @@ class CompDB:
                     if field['type'] == 'tinyint(1)': field['type'] = 'bool'
                     test_null = True
 
-                    if (re.search('(?i)PRIMARY KEY', match.group(3))):
+                    if re.search('(?i)PRIMARY KEY', match.group(3)):
                         current_table['pk'].append(match.group(1))
-                    if (re.search('(?i)NOT NULL', match.group(3))):
+                    if re.search('(?i)NOT NULL', match.group(3)):
                         field['nn'] = True
                         test_null = False
-                    if (re.search('(?i)auto_increment', match.group(3))):
+                    if re.search('(?i)auto_increment', match.group(3)):
                         field['inc'] = True
                     default_value = re.search("(?i)DEFAULT\s+(?:(\w+)|'([^']*)')", match.group(3))
-                    if (default_value):
+                    if default_value:
                         field['default'] = default_value.group(1) or default_value.group(2)
                         if field['default'] == 'NULL': test_null = False
                     # NULL on its own means 'DEFAULT NULL'
@@ -266,7 +267,7 @@ class CompDB:
                     current_table['fields'][field['name']] = field
                 # PRIMARY KEY (`id`),
                 primary_key = re.match('(?i)\s*PRIMARY KEY\s+\(([^)]+)\)', line)
-                if (primary_key):
+                if primary_key:
                     detected = True
                     # split the fields
                     pk_fields = re.split(',', primary_key.group(1))
@@ -275,7 +276,7 @@ class CompDB:
 
                 # UNIQUE (`location`, `text_id`) # anonymous
                 unique_key = re.match('(?i)\s*UNIQUE\s+\(([^)]+)\)', line)
-                if (unique_key):
+                if unique_key:
                     detected = True
                     # split the fields
                     uk_fields = re.split(',', unique_key.group(1))
@@ -287,7 +288,7 @@ class CompDB:
                 
                 # UNIQUE KEY `location` (`location`,`text_id`),
                 unique_key = re.match('(?i)\s*(?:UNIQUE|FULLTEXT) KEY\s+`([^`]+)`\s+\(([^)]+)\)', line)
-                if (unique_key):
+                if unique_key:
                     detected = True
                     # split the fields
                     uk_fields = re.split(',', unique_key.group(2))
@@ -302,7 +303,7 @@ class CompDB:
                 # CONSTRAINT `text_id_refs_id_4aaf935` FOREIGN KEY (`text_id`) REFERENCES `plays_text` (`id`)
                 # TODO: structure the fields
                 foreign_key = re.match('(?i)\s*CONSTRAINT\s+`([^`]+)`\s+FOREIGN KEY\s+\(([^)]+)\)\s+REFERENCES\s+`([^`]+)`\s+\(([^)]+)\)', line)
-                if (foreign_key):
+                if foreign_key:
                     detected = True
                     # split the fields
                     key_fields = re.split(',', foreign_key.group(2))
@@ -323,12 +324,12 @@ class CompDB:
                 
                 # end of table
                 match = re.match('\)', line)
-                if (match):
+                if match:
                     detected = True
                     tables[current_table['name']] = current_table
                     current_table = None
             line = line.strip("\n ")
-            if (not detected and len(line) > 1):
+            if not detected and len(line) > 1:
                 print "WARNING: (%s:%d) not recognised: %s" % (file_name, line_number, line)
                 
         f.close()
@@ -345,7 +346,8 @@ class CompDB:
     def filter_table_dic(self, tables={}, table_prefix=''):
         if tables is None or table_prefix == '': return
         for table_name in tables.keys():
-            if (not re.match(table_prefix, table_name)): del tables[table_name]
+            if not re.match(table_prefix, table_name):
+                del tables[table_name]
 
 
 def usage(stay=False):
@@ -418,7 +420,7 @@ def parseCmdLine():
         except ImportError, e:
             print e
             print "ERROR: settings.py not found in the current directory\n"
-            usage();
+            usage()
 
         # mysqldump of the db schema
         host = settings.DATABASE_HOST
@@ -431,7 +433,8 @@ def parseCmdLine():
         
         # django dump of the db schema
         comp.set_files('cmpdb.sql', 'cmpdj.sql')
-    else: usage()
+    else:
+        usage()
     
     comp.compare()
 
