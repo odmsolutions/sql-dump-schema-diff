@@ -205,7 +205,7 @@ class CompDB:
                 match = re.match('(?i)CREATE TABLE `([^`]*)`', line)
                 if (match):
                     detected = True
-                    current_table = {'name' : match.group(1), 'fields': {}, 'pk': [], 'fk': {}, 'uk': {}, 'ft': {}}
+                    current_table = {'name' : match.group(1), 'fields': {}, 'pk': set(), 'fk': {}, 'uk': {}, 'ft': {}}
                 # ALTER TABLE `plays_text_sample` ADD CONSTRAINT text_id_refs_id_4aaf935 FOREIGN KEY (`text_id`) REFERENCES `plays_text` (`id`);
                 foreign_key = re.match('(?i)\s*ALTER TABLE\s+`([^`]+)`\s+ADD CONSTRAINT\s+(.+)\s+FOREIGN KEY\s+\(([^)]+)\)\s+REFERENCES\s+`([^`]+)`\s+\(([^)]+)\)', line)
                 if foreign_key:
@@ -235,7 +235,8 @@ class CompDB:
                 match = re.match('\s*`(.*)`\s+([^\s]*)\s+(.*)$', line)
                 if (match):
                     detected = True
-                    field = {'name': match.group(1), 'type': match.group(2), 'nn': False, 'default': False, 'inc': False}
+                    field = {'name': match.group(1), 'type': match.group(2), 'nn': False,
+                             'default': False, 'inc': False}
                     
                     # equivalent data types
                     if field['type'] == 'integer': field['type'] = 'int(11)'
@@ -244,7 +245,7 @@ class CompDB:
                     test_null = True
 
                     if re.search('(?i)PRIMARY KEY', match.group(3)):
-                        current_table['pk'].append(match.group(1))
+                        current_table['pk'].add(match.group(1))
                     if re.search('(?i)NOT NULL', match.group(3)):
                         field['nn'] = True
                         test_null = False
@@ -268,7 +269,7 @@ class CompDB:
                     # split the fields
                     pk_fields = re.split(',', primary_key.group(1))
                     for field in pk_fields:
-                        current_table['pk'].append(field.strip(' ').strip('`'))
+                        current_table['pk'].add(field.strip(' ').strip('`'))
 
                 # UNIQUE (`location`, `text_id`) # anonymous
                 unique_key = re.match('(?i)\s*UNIQUE\s+\(([^)]+)\)', line)
