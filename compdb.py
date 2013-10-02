@@ -60,18 +60,15 @@ class CompDB:
         tables_source = self.analyse_file(self.source_file_name, self.table_prefix)
         tables_target = self.analyse_file(self.target_file_name, self.table_prefix)
         # 1. compare tables
-        diff_count = 0
         for table_name in tables_source:
             if table_name in tables_target:
-                diff_count += self.compare_tables(tables_source[table_name], tables_target[table_name])
+                self.compare_tables(tables_source[table_name], tables_target[table_name])
             else:
-                diff_count += 1
                 if self.format == 'sql':
                     print '%sDROP TABLE `%s`;' % (self.no_loss, table_name)
 
         for table_name in tables_target:
             if table_name not in tables_source:
-                diff_count += 1
                 print 'CREATE TABLE `%s` (' % table_name
                 self.compare_tables(None, tables_target[table_name], True)
                 print ');'
@@ -93,7 +90,6 @@ class CompDB:
             But only two of those cases should ever be treated
             (2 and 3 are mutually exclusive).
         """
-        diff_count = 0
         after_create_statement = (source is None and not create_statement)
         outside_create_statement = (source is not None or after_create_statement)
         # 2.1. compare fields
@@ -101,10 +97,8 @@ class CompDB:
             for field_name in source['fields']:
                 if field_name in target['fields']:
                     if source['fields'][field_name] != target['fields'][field_name]:
-                        diff_count += 1
                         print "ALTER TABLE `%s` MODIFY COLUMN %s;" % (source['name'], describe_field(target['fields'][field_name]))
                 else:
-                    diff_count += 1
                     print '%sALTER TABLE `%s` DROP COLUMN `%s`;' % (self.no_loss, source['name'], field_name)
 
         for field_name in target['fields']:
@@ -127,7 +121,6 @@ class CompDB:
             if outside_create_statement:
                 for key_hash in target['fk']:
                     if source is None or key_hash not in source['fk']:
-                        diff_count += 1
                         print 'ALTER TABLE `%s` ADD CONSTRAINT `%s` FOREIGN KEY (%s) REFERENCES `%s` (%s);' % (target['name'], target['fk'][key_hash]['name'], get_quoted_fields(target['fk'][key_hash]['k']), target['fk'][key_hash]['table'], get_quoted_fields(target['fk'][key_hash]['fk'])) 
                         
         # 2.3. compare uk
@@ -135,7 +128,6 @@ class CompDB:
             if source is not None:
                 for key_name in source[key_type['id']]:
                     if key_name not in target[key_type['id']]:
-                        diff_count += 1
                         print '-- %s (%s) ' % (key_type['name'], ', '.join(source[key_type['id']][key_name]['fields']))
                         index_name = source[key_type['id']][key_name]['name']
                         if index_name == '':
@@ -146,7 +138,6 @@ class CompDB:
             if outside_create_statement:
                 for key_name in target[key_type['id']]:
                     if source is None or key_name not in source[key_type['id']]:
-                        diff_count += 1
                         index_name = target[key_type['id']][key_name]['name']
                         if index_name == '': index_name = key_name
                         print 'ALTER TABLE %s ADD %s `%s` (%s);' % (target['name'], key_type['name'], index_name, ', '.join(target[key_type['id']][key_name]['fields']))
@@ -154,17 +145,13 @@ class CompDB:
         # 2.4. compare pk
         if source is not None:
             if source['pk'] != target['pk']: 
-                diff_count += 1
                 #print '-- PRIMARY KEY: %s \n\t%s \n\t=> \n\t%s' % (source['name'], ', '.join(source['pk']), ', '.join(target['pk']))
                 print 'ALTER TABLE %s DROP PRIMARY KEY;' % source['name']
                 print 'ALTER TABLE %s ADD PRIMARY KEY (%s);' % (source['name'], ', '.join(target['pk']))
         else:
             if create_statement:
                 if len(target['pk']):
-                    diff_count += 1
                     print '\tPRIMARY KEY (%s)' % get_quoted_fields(target['pk'])
-        
-        return diff_count
 
     def analyse_file(self, file_name, table_prefix):
         """Produce a dict of tables.
