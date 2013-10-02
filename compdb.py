@@ -41,8 +41,8 @@ class CompDB:
         self.format = data_format
         
     def compare(self):
-        tables_source = self.analyse_file(False, self.table_prefix)
-        tables_target = self.analyse_file(True, self.table_prefix)
+        tables_source = self.analyse_file(self.source_file_name, self.table_prefix)
+        tables_target = self.analyse_file(self.target_file_name, self.table_prefix)
         # 1. compare tables
         diff_count = 0
         for table_name in tables_source:
@@ -173,7 +173,7 @@ class CompDB:
             ret = ret + u'`%s`' % field
         return ret
             
-    def analyse_file(self, target=False, table_prefix):
+    def analyse_file(self, file_name, table_prefix):
         """Produce a dict of tables.
         Format:
         <table_name>:
@@ -184,8 +184,6 @@ class CompDB:
             uk: {<unique keys dict>},
             ft: {<fulltext key  dict>},
         """
-        file_name = self.source_file_name
-        if (target): file_name = self.target_file_name
         # read the file
         f = None
         try:
