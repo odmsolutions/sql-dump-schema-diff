@@ -162,9 +162,6 @@ class CompDB:
                 ret += '`%s`' % field['default']
         return ret
 
-    def describe_foreign_key(self, key):
-        return '(%s) -> %s.(%s)' % (', '.join(key['k']), key['table'], ', '.join(key['fk']))
-    
     def analyse_file(self, file_name, table_prefix):
         """Produce a dict of tables.
         Format:
