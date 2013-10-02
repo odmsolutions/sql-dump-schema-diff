@@ -7,7 +7,7 @@ import re
 
 
 def clean_field_name(field_name):
-    return field_name.strip(' ').strip('`')
+    return field_name.strip(' `')
 
 
 def describe_field(field):
@@ -253,10 +253,10 @@ class CompDB:
                 if re.match('\s*KEY `', line):
                     detected = True
                 # remove , at the end
-                line = re.sub(',$', '', line)
+                line = line.strip(",")
                 # FIELD
                 match = re.match('\s*`(.*)`\s+([^\s]*)\s+(.*)$', line)
-                if (match):
+                if match:
                     detected = True
                     field = {'name': match.group(1), 'type': match.group(2), 'nn': False,
                              'default': False, 'inc': False}
