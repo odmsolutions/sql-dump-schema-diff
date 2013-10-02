@@ -194,7 +194,7 @@ class CompDB:
         # analyse the file
         tables = {}
         current_table = None
-        
+        comment=False
         line_number = 0
         for line in f:
             line_number += 1
@@ -203,7 +203,22 @@ class CompDB:
                 continue
             if re.match('/\*.*\*/', line):
                 continue
+            if re.match('\/\*\!.*\*\/\;*$',line):
+               # print "ignoring as line is commented :(%s)"%line
+                continue
+            if re.match('^\s*\/\*\!.*',line):
+               # print "comment started as line as comment start:(%s)"%line
+                comment = True
+                continue
             if current_table is None:
+                # as it is inside the comments
+                if comment is True:
+                    # check if it is comment end
+                    if re.match('.*\*\/\;*$',line):
+                #        print "comment ended so making comment as False"
+                        comment = False
+                 #   print "ignoring as line is inside comments :(%s)"%line
+                    continue
                 # statements to ignore
                 if re.match('(?i)\s*DROP TABLE', line):
                     detected = True
