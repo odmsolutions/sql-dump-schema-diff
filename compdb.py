@@ -173,7 +173,7 @@ class CompDB:
             ret = ret + u'`%s`' % field
         return ret
             
-    def analyse_file(self, target=False, table_prefix='plays_'):
+    def analyse_file(self, target=False, table_prefix):
         """Produce a dict of tables.
         Format:
         <table_name>:
