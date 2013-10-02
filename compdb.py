@@ -174,6 +174,16 @@ class CompDB:
         return ret
             
     def analyse_file(self, target=False, table_prefix='plays_'):
+        """Produce a dict of tables.
+        Format:
+        <table_name>:
+            name: "<table_name>",
+            fields: {<table fields dict>},
+            pk: [<primary key name>, <primary key name>...],
+            fk: {<foreign keys dict>},
+            uk: {<unique keys dict>},
+            ft: {<fulltext key  dict>},
+        """
         file_name = self.source_file_name
         if (target): file_name = self.target_file_name
         # read the file
