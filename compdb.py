@@ -188,7 +188,7 @@ class CompDB:
         # analyse the file
         tables = {}
         current_table = None
-        comment=False
+        comment = False
         line_number = 0
         for line in f:
             line_number += 1
@@ -373,9 +373,9 @@ def get_quoted_fields(fields):
     return u', '.join(u"`%s`" % field for field in fields)
 
 
-def usage(stay=False):
-        print "Usage: %s [OPTION]... [OLD_SCHEMA.sql NEW_SCHEMA.sql]" % sys.argv[0]
-        print """Prints all the differences between 2 DB schemas on the standard output.
+def usage():
+    print "Usage: %s [OPTION]... [OLD_SCHEMA.sql NEW_SCHEMA.sql]" % sys.argv[0]
+    print """Prints all the differences between 2 DB schemas on the standard output.
 
 Options:
 
@@ -404,8 +404,7 @@ table or a field). For instance, if you have changed the name of a table from
 A to B, the script will tell you to drop A and create B because it doesn't 
 know they are related. If you follow those instructions you will loose your 
 data. Please be aware of this limitation."""
-        if not stay:
-            sys.exit(2)
+    sys.exit(2)
 
 def run_command(command):
     import os
