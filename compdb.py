@@ -311,7 +311,6 @@ class CompDB:
                     for field in key_fields:
                         target_fields.append(clean_field_name(field))
 
-                    #current_table['fk'][foreign_key.group(1)] = {'table': foreign_key.group(3), 'k': source_fields, 'fk': target_fields}
                     fk_table = clean_field_name(foreign_key.group(3))
                     fkid = ''.join(source_fields) + '->' + fk_table + '.' + ''.join(target_fields)
                     current_table['fk'][fkid] = {'table': fk_table, 'k': source_fields, 'fk': target_fields, 'name': clean_field_name(foreign_key.group(1))}
