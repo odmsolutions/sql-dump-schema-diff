@@ -462,4 +462,5 @@ def parseCmdLine():
     
     comp.compare()
 
-parseCmdLine()
+if __name__ == "__main__":
+    parseCmdLine()
