@@ -112,7 +112,7 @@ class CompDB:
                 for key_hash in target['fk']:
                     if source is None or key_hash not in source['fk']:
                         diff_count += 1
-                        print 'ALTER TABLE `%s` ADD CONSTRAINT `%s` FOREIGN KEY (%s) REFERENCES `%s` (%s);' % (target['name'], target['fk'][key_hash]['name'], self.get_quoted_fields(target['fk'][key_hash]['k']), target['fk'][key_hash]['table'], self.get_quoted_fields(target['fk'][key_hash]['fk'])) 
+                        print 'ALTER TABLE `%s` ADD CONSTRAINT `%s` FOREIGN KEY (%s) REFERENCES `%s` (%s);' % (target['name'], target['fk'][key_hash]['name'], get_quoted_fields(target['fk'][key_hash]['k']), target['fk'][key_hash]['table'], get_quoted_fields(target['fk'][key_hash]['fk'])) 
                         
         # 2.3. compare uk
         for key_type in [{'name': 'UNIQUE INDEX', 'id': 'uk'}, {'name': 'FULLTEXT KEY', 'id': 'ft'}]:
@@ -146,7 +146,7 @@ class CompDB:
             if create_statement:
                 if len(target['pk']):
                     diff_count += 1
-                    print '\tPRIMARY KEY (%s)' % self.get_quoted_fields(target['pk'])
+                    print '\tPRIMARY KEY (%s)' % get_quoted_fields(target['pk'])
         
         return diff_count
         
@@ -165,14 +165,6 @@ class CompDB:
     def describe_foreign_key(self, key):
         return '(%s) -> %s.(%s)' % (', '.join(key['k']), key['table'], ', '.join(key['fk']))
     
-    def get_quoted_fields(self, fields):
-        ret = ''
-        for field in fields:
-            if len(ret) > 0:
-                ret = ret + ', '
-            ret = ret + u'`%s`' % field
-        return ret
-            
     def analyse_file(self, file_name, table_prefix):
         """Produce a dict of tables.
         Format:
@@ -373,6 +365,10 @@ def filter_table_dic(tables, table_prefix=''):
     for table_name in tables.keys():
         if not re.match(table_prefix, table_name):
             del tables[table_name]
+
+
+def get_quoted_fields(fields):
+    return u', '.join(u"`%s`" % field for field in fields)
 
 
 def usage(stay=False):
