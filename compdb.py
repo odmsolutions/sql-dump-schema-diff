@@ -305,7 +305,8 @@ class CompDB:
                 
                 # CONSTRAINT `text_id_refs_id_4aaf935` FOREIGN KEY (`text_id`) REFERENCES `plays_text` (`id`)
                 # TODO: structure the fields
-                foreign_key = re.match('(?i)\s*CONSTRAINT\s+`([^`]+)`\s+FOREIGN KEY\s+\(([^)]+)\)\s+REFERENCES\s+`([^`]+)`\s+\(([^)]+)\)', line)
+                foreign_key = re.match('(?i)\s*CONSTRAINT\s+`([^`]+)`\s+FOREIGN KEY\s+\(([^)]+)\)\s+'
+                                       'REFERENCES\s+`([^`]+)`\s+\(([^)]+)\)', line)
                 if foreign_key:
                     detected = True
                     # split the fields
@@ -320,7 +321,9 @@ class CompDB:
 
                     fk_table = clean_field_name(foreign_key.group(3))
                     fkid = ''.join(source_fields) + '->' + fk_table + '.' + ''.join(target_fields)
-                    current_table['fk'][fkid] = {'table': fk_table, 'k': source_fields, 'fk': target_fields, 'name': clean_field_name(foreign_key.group(1))}
+                    current_table['fk'][fkid] = {'table': fk_table, 'k': source_fields,
+                                                 'fk': target_fields,
+                                                 'name': clean_field_name(foreign_key.group(1))}
                 
                 # TODO: KEY `plays_text_sample_text_id` (`text_id`),
                 
