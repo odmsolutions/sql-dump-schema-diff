@@ -206,8 +206,11 @@ class CompDB:
                 if (match):
                     detected = True
                     current_table = {'name' : match.group(1), 'fields': {}, 'pk': set(), 'fk': {}, 'uk': {}, 'ft': {}}
-                # ALTER TABLE `plays_text_sample` ADD CONSTRAINT text_id_refs_id_4aaf935 FOREIGN KEY (`text_id`) REFERENCES `plays_text` (`id`);
-                foreign_key = re.match('(?i)\s*ALTER TABLE\s+`([^`]+)`\s+ADD CONSTRAINT\s+(.+)\s+FOREIGN KEY\s+\(([^)]+)\)\s+REFERENCES\s+`([^`]+)`\s+\(([^)]+)\)', line)
+                # ALTER TABLE `plays_text_sample` ADD CONSTRAINT text_id_refs_id_4aaf935 FOREIGN KEY
+                # (`text_id`) REFERENCES `plays_text` (`id`);
+                foreign_key = re.match(
+                    '(?i)\s*ALTER TABLE\s+`([^`]+)`\s+ADD CONSTRAINT\s+(.+)\s+'
+                    'FOREIGN KEY\s+\(([^)]+)\)\s+REFERENCES\s+`([^`]+)`\s+\(([^)]+)\)', line)
                 if foreign_key:
                     detected = True
                     # split the fields
@@ -222,8 +225,11 @@ class CompDB:
 
                     fk_table = clean_field_name(foreign_key.group(4))
                     fkid = ''.join(source_fields) + '->' + fk_table + '.' + ''.join(target_fields)
-                    tables[foreign_key.group(1)]['fk'][fkid] = {'table': fk_table, 'k': source_fields, 'fk': target_fields, 'name': clean_field_name(foreign_key.group(2))}
-                    #['fk'][foreign_key.group(2)] = {'table': foreign_key.group(4), 'k': source_fields, 'fk': target_fields}
+                    tables[foreign_key.group(1)]['fk'][fkid] = {'table': fk_table, 'k': source_fields,
+                                                                'fk': target_fields,
+                                                                'name': clean_field_name(foreign_key.group(2))}
+                    #['fk'][foreign_key.group(2)] = {'table': foreign_key.group(4),
+                    # 'k': source_fields, 'fk': target_fields}
                     
             else:
                 # statements to ignore
