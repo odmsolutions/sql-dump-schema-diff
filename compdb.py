@@ -180,7 +180,7 @@ class CompDB:
         except IOError:
             print 'Error reading %s' % file_name
             exit()
-            
+        # analyse the file
         tables = {}
         current_table = None
         
@@ -326,8 +326,6 @@ class CompDB:
                 print "WARNING: (%s:%d) not recognised: %s" % (file_name, line_number, line)
                 
         f.close()
-        # analyse the file
-        
         # filter the result
         filter_table_dic(tables, table_prefix)
         
