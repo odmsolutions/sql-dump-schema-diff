@@ -62,7 +62,7 @@ class CompDB:
         # 1. compare tables
         for table_name in tables_source:
             if table_name in tables_target:
-                self.compare_tables(tables_source[table_name], tables_target[table_name])
+                self._compare_tables_with_source(tables_source[table_name], tables_target[table_name])
             else:
                 if self.format == 'sql':
                     print '%sDROP TABLE `%s`;' % (self.no_loss, table_name)
@@ -70,88 +70,102 @@ class CompDB:
         for table_name in tables_target:
             if table_name not in tables_source:
                 print 'CREATE TABLE `%s` (' % table_name
-                self.compare_tables(None, tables_target[table_name], True)
+                self._generate_create_table(tables_target[table_name])
                 print ');'
-                self.compare_tables(None, tables_target[table_name], False)
+                self._generate_after_create_table(tables_target[table_name])
 
-    def compare_tables(self, source, target, create_statement=False):
-        """ source is None means that we need to create the table
-            compare table works in two phases:
-                * within a create statement (e.g. declare the fields and PK)
-                * after the create statement (e.g. add a field or an index)
-
-            create_statement = True always implies that source is None
-
-            There are three cases to consider for each difference:
-                1. source is not None
-                source is None:
-                    2. create_statement
-                    3. not create_statement
-            But only two of those cases should ever be treated
-            (2 and 3 are mutually exclusive).
+    def _compare_tables_with_source(self, source, target):
         """
-        after_create_statement = (source is None and not create_statement)
-        outside_create_statement = (source is not None or after_create_statement)
+        this covers the case:
+            * after the create statement (e.g. add a field or an index)
+            1. source is not None
+        """
         # 2.1. compare fields
-        if source is not None:
-            for field_name in source['fields']:
-                if field_name in target['fields']:
-                    if source['fields'][field_name] != target['fields'][field_name]:
-                        print "ALTER TABLE `%s` MODIFY COLUMN %s;" % (source['name'], describe_field(target['fields'][field_name]))
-                else:
-                    print '%sALTER TABLE `%s` DROP COLUMN `%s`;' % (self.no_loss, source['name'], field_name)
-
-        for field_name in target['fields']:
-            if source is not None:
-                if field_name not in source['fields']:
-                    diff_count += 1
-                    print 'ALTER TABLE `%s` ADD COLUMN %s;' % (source['name'], describe_field(target['fields'][field_name]))
+        for field_name in source['fields']:
+            if field_name in target['fields']:
+                if source['fields'][field_name] != target['fields'][field_name]:
+                    print "ALTER TABLE `%s` MODIFY COLUMN %s;" % (source['name'],
+                                                                  describe_field(target['fields'][field_name]))
             else:
-                if create_statement:
-                    print '\t%s,' % describe_field(target['fields'][field_name])
-        
+                print '%sALTER TABLE `%s` DROP COLUMN `%s`;' % (self.no_loss, source['name'], field_name)
+        for (name, field) in target['fields'].items():
+            if name not in source['fields']:
+                print 'ALTER TABLE `%s` ADD COLUMN %s;' % (source['name'],
+                                                           describe_field(field))
         # 2.2. compare fk
         if not self.no_foreign_key:
-            if source is not None:
-                for key_hash in source['fk']:
-                    if key_hash not in target['fk']:
-                        diff_count += 1
-                        print '%sALTER TABLE `%s` DROP FOREIGN KEY `%s`;' % (self.no_loss, target['name'], target['fk'][key_hash]['name'])
+            for key_hash in source['fk']:
+                if key_hash not in target['fk']:
+                    print '%sALTER TABLE `%s` DROP FOREIGN KEY `%s`;' % (self.no_loss, target['name'],
+                                                                         target['fk'][key_hash]['name'])
 
-            if outside_create_statement:
-                for key_hash in target['fk']:
-                    if source is None or key_hash not in source['fk']:
-                        print 'ALTER TABLE `%s` ADD CONSTRAINT `%s` FOREIGN KEY (%s) REFERENCES `%s` (%s);' % (target['name'], target['fk'][key_hash]['name'], get_quoted_fields(target['fk'][key_hash]['k']), target['fk'][key_hash]['table'], get_quoted_fields(target['fk'][key_hash]['fk'])) 
-                        
+            for key_hash in target['fk']:
+                if key_hash not in source['fk']:
+                    print 'ALTER TABLE `%s` ADD CONSTRAINT `%s` FOREIGN KEY (%s) REFERENCES `%s` (%s);' \
+                          % (target['name'], target['fk'][key_hash]['name'],
+                             get_quoted_fields(target['fk'][key_hash]['k']),
+                             target['fk'][key_hash]['table'],
+                             get_quoted_fields(target['fk'][key_hash]['fk']))
         # 2.3. compare uk
         for key_type in [{'name': 'UNIQUE INDEX', 'id': 'uk'}, {'name': 'FULLTEXT KEY', 'id': 'ft'}]:
-            if source is not None:
-                for key_name in source[key_type['id']]:
-                    if key_name not in target[key_type['id']]:
+            for key_name in source[key_type['id']]:
+                if key_name not in target[key_type['id']]:
+                    print '-- %s (%s) ' % (key_type['name'], ', '.join(source[key_type['id']][key_name]['fields']))
+                    index_name = source[key_type['id']][key_name]['name']
+                    if index_name == '':
                         print '-- %s (%s) ' % (key_type['name'], ', '.join(source[key_type['id']][key_name]['fields']))
-                        index_name = source[key_type['id']][key_name]['name']
-                        if index_name == '':
-                            print '-- WARNING: UNKNONW INDEX NAME: ALTER TABLE %s DROP INDEX ???;' % source['name']
-                        else:
-                            print '%sALTER TABLE %s DROP INDEX `%s`;' % (self.no_loss, source['name'], source[key_type['id']][key_name]['name'])
-            
-            if outside_create_statement:
-                for key_name in target[key_type['id']]:
-                    if source is None or key_name not in source[key_type['id']]:
-                        index_name = target[key_type['id']][key_name]['name']
-                        if index_name == '': index_name = key_name
-                        print 'ALTER TABLE %s ADD %s `%s` (%s);' % (target['name'], key_type['name'], index_name, ', '.join(target[key_type['id']][key_name]['fields']))
-                        
+                    else:
+                        print '%sALTER TABLE %s DROP INDEX `%s`;' % (self.no_loss, source['name'],
+                                                                     source[key_type['id']][key_name]['name'])
+
+            for key_name in target[key_type['id']]:
+                if key_name not in source[key_type['id']]:
+                    index_name = target[key_type['id']][key_name]['name']
+                    if index_name == '':
+                        index_name = key_name
+                    print 'ALTER TABLE %s ADD %s `%s` (%s);' % (
+                        target['name'], key_type['name'], index_name,
+                        ', '.join(target[key_type['id']][key_name]['fields']))
         # 2.4. compare pk
-        if source is not None:
-            if source['pk'] != target['pk']: 
-                #print '-- PRIMARY KEY: %s \n\t%s \n\t=> \n\t%s' % (source['name'], ', '.join(source['pk']), ', '.join(target['pk']))
-                print 'ALTER TABLE %s DROP PRIMARY KEY;' % source['name']
-                print 'ALTER TABLE %s ADD PRIMARY KEY (%s);' % (source['name'], ', '.join(target['pk']))
-        else:
-            if create_statement:
-                if len(target['pk']):
-                    print '\tPRIMARY KEY (%s)' % get_quoted_fields(target['pk'])
+        if source['pk'] != target['pk']:
+            print 'ALTER TABLE %s DROP PRIMARY KEY;' % source['name']
+            print 'ALTER TABLE %s ADD PRIMARY KEY (%s);' % (source['name'], ', '.join(target['pk']))
+
+    def _generate_after_create_table(self, target):
+        """
+         after the create statement (e.g. add a field or an index)
+        """
+        # 2.2. compare fk, uk
+        if not self.no_foreign_key:
+            for key_hash in target['fk']:
+                print 'ALTER TABLE `%s` ADD CONSTRAINT `%s` FOREIGN KEY (%s) REFERENCES `%s` (%s);' \
+                      % (target['name'], target['fk'][key_hash]['name'],
+                         get_quoted_fields(target['fk'][key_hash]['k']),
+                         target['fk'][key_hash]['table'],
+                         get_quoted_fields(target['fk'][key_hash]['fk']))
+
+        for key_type in [{'name': 'UNIQUE INDEX', 'id': 'uk'}, {'name': 'FULLTEXT KEY', 'id': 'ft'}]:
+            for key_name in target[key_type['id']]:
+                index_name = target[key_type['id']][key_name]['name']
+                if index_name == '':
+                    index_name = key_name
+                print 'ALTER TABLE %s ADD %s `%s` (%s);' % (
+                    target['name'], key_type['name'], index_name,
+                    ', '.join(target[key_type['id']][key_name]['fields']))
+
+    def _generate_create_table(self, target):
+        """ make syntax to create the table
+        within a create statement (e.g. declare the fields and PK)
+        """
+        # 2.1. compare fields
+        output_fields = [describe_field(field) for (name, field) in target['fields'].items()]
+
+        # 2.4. compare pk
+        if len(target['pk']):
+            output_fields.append('PRIMARY KEY (%s)' % get_quoted_fields(target['pk']))
+
+        field_output = ",\n".join("\t%s" % field for field in output_fields)
+        print field_output
 
     def analyse_file(self, file_name, table_prefix):
         """Produce a dict of tables.
