@@ -329,18 +329,19 @@ class CompDB:
         # analyse the file
         
         # filter the result
-        self.filter_table_dic(tables, table_prefix)
+        filter_table_dic(tables, table_prefix)
         
         return tables
     
     def clean_field_name(self, field_name):
         return field_name.strip(' ').strip('`')
     
-    def filter_table_dic(self, tables={}, table_prefix=''):
-        if tables is None or table_prefix == '': return
-        for table_name in tables.keys():
-            if not re.match(table_prefix, table_name):
-                del tables[table_name]
+def filter_table_dic(tables, table_prefix=''):
+    if tables is None or table_prefix == '':
+        return
+    for table_name in tables.keys():
+        if not re.match(table_prefix, table_name):
+            del tables[table_name]
 
 
 def usage(stay=False):
