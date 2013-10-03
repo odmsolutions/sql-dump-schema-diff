@@ -300,9 +300,7 @@ class CompDB:
                     detected = True
                     # split the fields
                     uk_fields = re.split(',', unique_key.group(1))
-                    fields = []
-                    for field in uk_fields:
-                        fields.append(field.strip(' ').strip('`'))
+                    fields = [clean_field_name(field) for field in uk_fields]
                     #current_table['uk'][unique_key.group(1)] = fields
                     current_table['uk'][''.join(fields)] = {'name': '', 'fields': fields}
                 
@@ -316,7 +314,8 @@ class CompDB:
                     for field in uk_fields:
                         fields.append(field.strip(' ').strip('`'))
                     key_type = 'uk'
-                    if re.search('(?i)FULLTEXT KEY', line): key_type = 'ft'
+                    if re.search('(?i)FULLTEXT KEY', line):
+                        key_type = 'ft'
                     #current_table[key_type][unique_key.group(1)] = fields
                     current_table[key_type][''.join(fields)] = {'name': unique_key.group(1), 'fields': fields}
                 
@@ -411,7 +410,7 @@ def run_command(command):
     ret = os.system(command)
     return ret
 
-def parseCmdLine():
+def parse_cmd_line():
     import getopt
 
     try:
@@ -463,4 +462,4 @@ def parseCmdLine():
     comp.compare()
 
 if __name__ == "__main__":
-    parseCmdLine()
+    parse_cmd_line()
