@@ -61,9 +61,11 @@ class CompDB:
         
     def compare(self):
         with open(self.source_file_name, 'r') as fd:
-            tables_source = self.analyse_file(fd, self.table_prefix)
+            print "Analysing %s", self.source_file_name
+            tables_source = analyse_file(fd, self.table_prefix)
         with open(self.target_file_name, 'r') as fd:
-            tables_target = self.analyse_file(fd, self.table_prefix)
+            print "Analysing %s", self.target_file_name
+            tables_target = analyse_file(fd, self.table_prefix)
         # 1. compare tables
         for table_name in tables_source:
             if table_name in tables_target:
@@ -172,191 +174,198 @@ class CompDB:
         field_output = ",\n".join("\t%s" % field for field in output_fields)
         print field_output
 
-    def analyse_file(self, lines, table_prefix):
-        """Produce a dict of tables.
-        lines - an iterable of lines or IO stream
-        Output Format:
+
+def analyse_file(lines, table_prefix=""):
+    """Produce a dict of tables.
+    lines - an iterable of lines or IO stream
+    table_prefix - prefix for table names to match - filter out those that do not.
+    Output Format - dict of tables:
         <table_name>:
             name: "<table_name>",
-            fields: {<table fields dict>},
+            fields:
+                <field_name>:
+                    'name': <field_name>,
+                    'type': <field type>,
+                    'nn': <true if not null>,
+                    'default': <default value or None>,
+                    'inc': <true if auto increment>
             pk: [<primary key name>, <primary key name>...],
             fk: {<foreign keys dict>},
             uk: {<unique keys dict>},
             ft: {<fulltext key  dict>},
-        """
-        # read the file
-        tables = {}
-        current_table = None
-        comment = False
-        line_number = 0
-        for line in lines:
-            line_number += 1
-            detected = False
-            if re.match('--', line):
+    """
+    # read the file
+    tables = {}
+    current_table = None
+    comment = False
+    line_number = 0
+    for line in lines:
+        line_number += 1
+        detected = False
+        if re.match('--', line):
+            continue
+        if re.match('/\*.*\*/', line):
+            continue
+        if re.match('\/\*\!.*\*\/\;*$',line):
+           # print "ignoring as line is commented :(%s)"%line
+            continue
+        if re.match('^\s*\/\*\!.*',line):
+           # print "comment started as line as comment start:(%s)"%line
+            comment = True
+            continue
+        if current_table is None:
+            # as it is inside the comments
+            if comment is True:
+                # check if it is comment end
+                if re.match('.*\*\/\;*$',line):
+            #        print "comment ended so making comment as False"
+                    comment = False
+             #   print "ignoring as line is inside comments :(%s)"%line
                 continue
-            if re.match('/\*.*\*/', line):
-                continue
-            if re.match('\/\*\!.*\*\/\;*$',line):
-               # print "ignoring as line is commented :(%s)"%line
-                continue
-            if re.match('^\s*\/\*\!.*',line):
-               # print "comment started as line as comment start:(%s)"%line
-                comment = True
-                continue
-            if current_table is None:
-                # as it is inside the comments
-                if comment is True:
-                    # check if it is comment end
-                    if re.match('.*\*\/\;*$',line):
-                #        print "comment ended so making comment as False"
-                        comment = False
-                 #   print "ignoring as line is inside comments :(%s)"%line
-                    continue
-                # statements to ignore
-                if re.match('(?i)\s*DROP TABLE', line):
-                    detected = True
-                # statements to ignore
-                if re.match('(?i)\s*SET @|\w', line):
-                    detected = True
-                match = re.match('(?i)CREATE TABLE `([^`]*)`', line)
-                if (match):
-                    detected = True
-                    current_table = {'name' : match.group(1), 'fields': {}, 'pk': set(), 'fk': {}, 'uk': {}, 'ft': {}}
-                # ALTER TABLE `plays_text_sample` ADD CONSTRAINT text_id_refs_id_4aaf935 FOREIGN KEY
-                # (`text_id`) REFERENCES `plays_text` (`id`);
-                foreign_key = re.match(
-                    '(?i)\s*ALTER TABLE\s+`([^`]+)`\s+ADD CONSTRAINT\s+(.+)\s+'
-                    'FOREIGN KEY\s+\(([^)]+)\)\s+REFERENCES\s+`([^`]+)`\s+\(([^)]+)\)', line)
-                if foreign_key:
-                    detected = True
-                    # split the fields
-                    key_fields = re.split(',', foreign_key.group(3))
-                    source_fields = []
-                    for field in key_fields:
-                        source_fields.append(field.strip(' ').strip('`'))
-                    key_fields = re.split(',', foreign_key.group(5))
-                    target_fields = []
-                    for field in key_fields:
-                        target_fields.append(field.strip(' ').strip('`'))
+            # statements to ignore
+            if re.match('(?i)\s*DROP TABLE', line):
+                detected = True
+            # statements to ignore
+            if re.match('(?i)\s*SET @|\w', line):
+                detected = True
+            match = re.match('(?i)CREATE TABLE `([^`]*)`', line)
+            if (match):
+                detected = True
+                current_table = {'name' : match.group(1), 'fields': {}, 'pk': set(), 'fk': {}, 'uk': {}, 'ft': {}}
+            # ALTER TABLE `plays_text_sample` ADD CONSTRAINT text_id_refs_id_4aaf935 FOREIGN KEY
+            # (`text_id`) REFERENCES `plays_text` (`id`);
+            foreign_key = re.match(
+                '(?i)\s*ALTER TABLE\s+`([^`]+)`\s+ADD CONSTRAINT\s+(.+)\s+'
+                'FOREIGN KEY\s+\(([^)]+)\)\s+REFERENCES\s+`([^`]+)`\s+\(([^)]+)\)', line)
+            if foreign_key:
+                detected = True
+                # split the fields
+                key_fields = re.split(',', foreign_key.group(3))
+                source_fields = []
+                for field in key_fields:
+                    source_fields.append(field.strip(' ').strip('`'))
+                key_fields = re.split(',', foreign_key.group(5))
+                target_fields = []
+                for field in key_fields:
+                    target_fields.append(field.strip(' ').strip('`'))
 
-                    fk_table = clean_field_name(foreign_key.group(4))
-                    fkid = ''.join(source_fields) + '->' + fk_table + '.' + ''.join(target_fields)
-                    tables[foreign_key.group(1)]['fk'][fkid] = {'table': fk_table, 'k': source_fields,
-                                                                'fk': target_fields,
-                                                                'name': clean_field_name(foreign_key.group(2))}
-                    #['fk'][foreign_key.group(2)] = {'table': foreign_key.group(4),
-                    # 'k': source_fields, 'fk': target_fields}
-                    
-            else:
-                # statements to ignore
-                if re.match('\s*KEY `', line):
-                    detected = True
-                # remove , at the end
-                line = line.strip(",")
-                # FIELD
-                match = re.match('\s*`(.*)`\s+([^\s]*)\s+(.*)$', line)
-                if match:
-                    detected = True
-                    field = {'name': match.group(1), 'type': match.group(2), 'nn': False,
-                             'default': False, 'inc': False}
-                    
-                    # equivalent data types
-                    if field['type'] == 'integer': field['type'] = 'int(11)'
-                    if field['type'] == 'smallint(6)': field['type'] = 'smallint'
-                    if field['type'] == 'tinyint(1)': field['type'] = 'bool'
-                    test_null = True
+                fk_table = clean_field_name(foreign_key.group(4))
+                fkid = ''.join(source_fields) + '->' + fk_table + '.' + ''.join(target_fields)
+                tables[foreign_key.group(1)]['fk'][fkid] = {'table': fk_table, 'k': source_fields,
+                                                            'fk': target_fields,
+                                                            'name': clean_field_name(foreign_key.group(2))}
+                #['fk'][foreign_key.group(2)] = {'table': foreign_key.group(4),
+                # 'k': source_fields, 'fk': target_fields}
 
-                    if re.search('(?i)PRIMARY KEY', match.group(3)):
-                        current_table['pk'].add(match.group(1))
-                    if re.search('(?i)NOT NULL', match.group(3)):
-                        field['nn'] = True
-                        test_null = False
-                    if re.search('(?i)auto_increment', match.group(3)):
-                        field['inc'] = True
-                    default_value = re.search("(?i)DEFAULT\s+(?:(\w+)|'([^']*)')", match.group(3))
-                    if default_value:
-                        field['default'] = default_value.group(1) or default_value.group(2)
-                        if field['default'] == 'NULL': test_null = False
-                    # NULL on its own means 'DEFAULT NULL'
-                    #if test_null and re.match('(?i)NULL', match.group(3)):
-                    #    field['default'] = 'NULL'
-                    if test_null:
-                        field['default'] = 'NULL'
-                    # todo: other properties to capture???
-                    current_table['fields'][field['name']] = field
-                # PRIMARY KEY (`id`),
-                primary_key = re.match('(?i)\s*PRIMARY KEY\s+\(([^)]+)\)', line)
-                if primary_key:
-                    detected = True
-                    # split the fields
-                    pk_fields = re.split(',', primary_key.group(1))
-                    for field in pk_fields:
-                        current_table['pk'].add(field.strip(' ').strip('`'))
+        else:
+            # statements to ignore
+            if re.match('\s*KEY `', line):
+                detected = True
+            # remove , at the end
+            line = line.strip(",")
+            # FIELD
+            match = re.match('\s*`(.*)`\s+([^\s]*)\s+(.*)$', line)
+            if match:
+                detected = True
+                field = {'name': match.group(1), 'type': match.group(2), 'nn': False,
+                         'default': False, 'inc': False}
 
-                # UNIQUE (`location`, `text_id`) # anonymous
-                unique_key = re.match('(?i)\s*UNIQUE\s+\(([^)]+)\)', line)
-                if unique_key:
-                    detected = True
-                    # split the fields
-                    uk_fields = re.split(',', unique_key.group(1))
-                    fields = [clean_field_name(field) for field in uk_fields]
-                    #current_table['uk'][unique_key.group(1)] = fields
-                    current_table['uk'][''.join(fields)] = {'name': '', 'fields': fields}
-                
-                # UNIQUE KEY `location` (`location`,`text_id`),
-                unique_key = re.match('(?i)\s*(?:UNIQUE|FULLTEXT) KEY\s+`([^`]+)`\s+\(([^)]+)\)', line)
-                if unique_key:
-                    detected = True
-                    # split the fields
-                    uk_fields = re.split(',', unique_key.group(2))
-                    fields = []
-                    for field in uk_fields:
-                        fields.append(field.strip(' ').strip('`'))
-                    key_type = 'uk'
-                    if re.search('(?i)FULLTEXT KEY', line):
-                        key_type = 'ft'
-                    #current_table[key_type][unique_key.group(1)] = fields
-                    current_table[key_type][''.join(fields)] = {'name': unique_key.group(1), 'fields': fields}
-                
-                # CONSTRAINT `text_id_refs_id_4aaf935` FOREIGN KEY (`text_id`) REFERENCES `plays_text` (`id`)
-                # TODO: structure the fields
-                foreign_key = re.match('(?i)\s*CONSTRAINT\s+`([^`]+)`\s+FOREIGN KEY\s+\(([^)]+)\)\s+'
-                                       'REFERENCES\s+`([^`]+)`\s+\(([^)]+)\)', line)
-                if foreign_key:
-                    detected = True
-                    # split the fields
-                    key_fields = re.split(',', foreign_key.group(2))
-                    source_fields = []
-                    for field in key_fields:
-                        source_fields.append(clean_field_name(field))
-                    key_fields = re.split(',', foreign_key.group(4))
-                    target_fields = []
-                    for field in key_fields:
-                        target_fields.append(clean_field_name(field))
+                # equivalent data types
+                if field['type'] == 'integer': field['type'] = 'int(11)'
+                if field['type'] == 'smallint(6)': field['type'] = 'smallint'
+                if field['type'] == 'tinyint(1)': field['type'] = 'bool'
+                test_null = True
 
-                    fk_table = clean_field_name(foreign_key.group(3))
-                    fkid = ''.join(source_fields) + '->' + fk_table + '.' + ''.join(target_fields)
-                    current_table['fk'][fkid] = {'table': fk_table, 'k': source_fields,
-                                                 'fk': target_fields,
-                                                 'name': clean_field_name(foreign_key.group(1))}
-                
-                # TODO: KEY `plays_text_sample_text_id` (`text_id`),
-                
-                # end of table
-                match = re.match('\)', line)
-                if match:
-                    detected = True
-                    tables[current_table['name']] = current_table
-                    current_table = None
-            line = line.strip("\n ")
-            if not detected and len(line) > 1:
-                print "WARNING: (%s:%d) not recognised: %s" % (file_name, line_number, line)
-                
-        f.close()
-        # filter the result
-        filter_table_dic(tables, table_prefix)
-        
-        return tables
+                if re.search('(?i)PRIMARY KEY', match.group(3)):
+                    current_table['pk'].add(match.group(1))
+                if re.search('(?i)NOT NULL', match.group(3)):
+                    field['nn'] = True
+                    test_null = False
+                if re.search('(?i)auto_increment', match.group(3)):
+                    field['inc'] = True
+                default_value = re.search("(?i)DEFAULT\s+(?:(\w+)|'([^']*)')", match.group(3))
+                if default_value:
+                    field['default'] = default_value.group(1) or default_value.group(2)
+                    if field['default'] == 'NULL': test_null = False
+                # NULL on its own means 'DEFAULT NULL'
+                #if test_null and re.match('(?i)NULL', match.group(3)):
+                #    field['default'] = 'NULL'
+                if test_null:
+                    field['default'] = 'NULL'
+                # todo: other properties to capture???
+                current_table['fields'][field['name']] = field
+            # PRIMARY KEY (`id`),
+            primary_key = re.match('(?i)\s*PRIMARY KEY\s+\(([^)]+)\)', line)
+            if primary_key:
+                detected = True
+                # split the fields
+                pk_fields = re.split(',', primary_key.group(1))
+                for field in pk_fields:
+                    current_table['pk'].add(field.strip(' ').strip('`'))
+
+            # UNIQUE (`location`, `text_id`) # anonymous
+            unique_key = re.match('(?i)\s*UNIQUE\s+\(([^)]+)\)', line)
+            if unique_key:
+                detected = True
+                # split the fields
+                uk_fields = re.split(',', unique_key.group(1))
+                fields = [clean_field_name(field) for field in uk_fields]
+                #current_table['uk'][unique_key.group(1)] = fields
+                current_table['uk'][''.join(fields)] = {'name': '', 'fields': fields}
+
+            # UNIQUE KEY `location` (`location`,`text_id`),
+            unique_key = re.match('(?i)\s*(?:UNIQUE|FULLTEXT) KEY\s+`([^`]+)`\s+\(([^)]+)\)', line)
+            if unique_key:
+                detected = True
+                # split the fields
+                uk_fields = re.split(',', unique_key.group(2))
+                fields = []
+                for field in uk_fields:
+                    fields.append(field.strip(' ').strip('`'))
+                key_type = 'uk'
+                if re.search('(?i)FULLTEXT KEY', line):
+                    key_type = 'ft'
+                #current_table[key_type][unique_key.group(1)] = fields
+                current_table[key_type][''.join(fields)] = {'name': unique_key.group(1), 'fields': fields}
+
+            # CONSTRAINT `text_id_refs_id_4aaf935` FOREIGN KEY (`text_id`) REFERENCES `plays_text` (`id`)
+            # TODO: structure the fields
+            foreign_key = re.match('(?i)\s*CONSTRAINT\s+`([^`]+)`\s+FOREIGN KEY\s+\(([^)]+)\)\s+'
+                                   'REFERENCES\s+`([^`]+)`\s+\(([^)]+)\)', line)
+            if foreign_key:
+                detected = True
+                # split the fields
+                key_fields = re.split(',', foreign_key.group(2))
+                source_fields = []
+                for field in key_fields:
+                    source_fields.append(clean_field_name(field))
+                key_fields = re.split(',', foreign_key.group(4))
+                target_fields = []
+                for field in key_fields:
+                    target_fields.append(clean_field_name(field))
+
+                fk_table = clean_field_name(foreign_key.group(3))
+                fkid = ''.join(source_fields) + '->' + fk_table + '.' + ''.join(target_fields)
+                current_table['fk'][fkid] = {'table': fk_table, 'k': source_fields,
+                                             'fk': target_fields,
+                                             'name': clean_field_name(foreign_key.group(1))}
+
+            # TODO: KEY `plays_text_sample_text_id` (`text_id`),
+
+            # end of table
+            match = re.match('\s*\)', line)
+            if match:
+                detected = True
+                tables[current_table['name']] = current_table
+                current_table = None
+        line = line.strip("\n ")
+        if not detected and len(line) > 1:
+            print "WARNING: (%d) not recognised: %s" % (line_number, line)
+
+    # filter the result
+    filter_table_dic(tables, table_prefix)
+
+    return tables
 
 
 def filter_table_dic(tables, table_prefix=''):
