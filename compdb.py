@@ -5,6 +5,7 @@ Original from https://code.google.com/p/sql-dump-schema-diff
 """
 
 from __future__ import with_statement
+from collections import OrderedDict
 import sys
 import re
 
@@ -182,7 +183,7 @@ def analyse_file(lines, table_prefix=""):
     Output Format - dict of tables:
         <table_name>:
             name: "<table_name>",
-            fields:
+            fields: (OrderedDictionary of names)
                 <field_name>:
                     'name': <field_name>,
                     'type': <field type>,
@@ -231,7 +232,7 @@ def analyse_file(lines, table_prefix=""):
             match = re.match('(?i)CREATE TABLE `([^`]*)`', line)
             if (match):
                 detected = True
-                current_table = {'name' : match.group(1), 'fields': {}, 'pk': set(), 'fk': {}, 'uk': {}, 'ft': {}}
+                current_table = {'name' : match.group(1), 'fields': OrderedDict(), 'pk': set(), 'fk': {}, 'uk': {}, 'ft': {}}
             # ALTER TABLE `plays_text_sample` ADD CONSTRAINT text_id_refs_id_4aaf935 FOREIGN KEY
             # (`text_id`) REFERENCES `plays_text` (`id`);
             foreign_key = re.match(
