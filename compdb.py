@@ -62,15 +62,18 @@ class CompDB:
         
     def compare(self):
         with open(self.source_file_name, 'r') as fd:
-            print "Analysing %s", self.source_file_name
+            #print "Analysing %s" % self.source_file_name
             tables_source = analyse_file(fd, self.table_prefix)
         with open(self.target_file_name, 'r') as fd:
-            print "Analysing %s", self.target_file_name
+            #print "Analysing %s" % self.target_file_name
             tables_target = analyse_file(fd, self.table_prefix)
         # 1. compare tables
         for table_name in tables_source:
             if table_name in tables_target:
-                self._compare_tables_with_source(tables_source[table_name], tables_target[table_name])
+                output = compare_tables(tables_source[table_name], tables_target[table_name], self.no_loss,
+                                        self.no_foreign_key)
+                if output:
+                    print output
             else:
                 if self.format == 'sql':
                     print '%sDROP TABLE `%s`;' % (self.no_loss, table_name)
@@ -82,62 +85,6 @@ class CompDB:
                 print ');'
                 self._generate_after_create_table(tables_target[table_name])
 
-    def _compare_tables_with_source(self, source, target):
-        """
-        this covers the case:
-            * after the create statement (e.g. add a field or an index)
-            1. source is not None
-        """
-        # 2.1. compare fields
-        for field_name in source['fields']:
-            if field_name in target['fields']:
-                if source['fields'][field_name] != target['fields'][field_name]:
-                    print "ALTER TABLE `%s` MODIFY COLUMN %s;" % (source['name'],
-                                                                  describe_field(target['fields'][field_name]))
-            else:
-                print '%sALTER TABLE `%s` DROP COLUMN `%s`;' % (self.no_loss, source['name'], field_name)
-        for (name, field) in target['fields'].items():
-            if name not in source['fields']:
-                print 'ALTER TABLE `%s` ADD COLUMN %s;' % (source['name'],
-                                                           describe_field(field))
-        # 2.2. compare fk
-        if not self.no_foreign_key:
-            for key_hash in source['fk']:
-                if key_hash not in target['fk']:
-                    print '%sALTER TABLE `%s` DROP FOREIGN KEY `%s`;' % (self.no_loss, target['name'],
-                                                                         target['fk'][key_hash]['name'])
-
-            for key_hash in target['fk']:
-                if key_hash not in source['fk']:
-                    print 'ALTER TABLE `%s` ADD CONSTRAINT `%s` FOREIGN KEY (%s) REFERENCES `%s` (%s);' \
-                          % (target['name'], target['fk'][key_hash]['name'],
-                             get_quoted_fields(target['fk'][key_hash]['k']),
-                             target['fk'][key_hash]['table'],
-                             get_quoted_fields(target['fk'][key_hash]['fk']))
-        # 2.3. compare uk
-        for key_type in [{'name': 'UNIQUE INDEX', 'id': 'uk'}, {'name': 'FULLTEXT KEY', 'id': 'ft'}]:
-            for key_name in source[key_type['id']]:
-                if key_name not in target[key_type['id']]:
-                    print '-- %s (%s) ' % (key_type['name'], ', '.join(source[key_type['id']][key_name]['fields']))
-                    index_name = source[key_type['id']][key_name]['name']
-                    if index_name == '':
-                        print '-- %s (%s) ' % (key_type['name'], ', '.join(source[key_type['id']][key_name]['fields']))
-                    else:
-                        print '%sALTER TABLE %s DROP INDEX `%s`;' % (self.no_loss, source['name'],
-                                                                     source[key_type['id']][key_name]['name'])
-
-            for key_name in target[key_type['id']]:
-                if key_name not in source[key_type['id']]:
-                    index_name = target[key_type['id']][key_name]['name']
-                    if index_name == '':
-                        index_name = key_name
-                    print 'ALTER TABLE %s ADD %s `%s` (%s);' % (
-                        target['name'], key_type['name'], index_name,
-                        ', '.join(target[key_type['id']][key_name]['fields']))
-        # 2.4. compare pk
-        if source['pk'] != target['pk']:
-            print 'ALTER TABLE %s DROP PRIMARY KEY;' % source['name']
-            print 'ALTER TABLE %s ADD PRIMARY KEY (%s);' % (source['name'], ', '.join(target['pk']))
 
     def _generate_after_create_table(self, target):
         """
@@ -174,6 +121,77 @@ class CompDB:
 
         field_output = ",\n".join("\t%s" % field for field in output_fields)
         print field_output
+
+
+def compare_tables(source, target, no_loss, no_foreign_key=False):
+    """
+    this covers the case:
+        * after the create statement (e.g. add a field or an index)
+        1. source is not None
+    source: Source table dictionary
+    target: Target table dictionary
+    output: migration lines
+    """
+    # 2.1. compare fields
+    output = ""
+    for field_name in source['fields']:
+        if field_name in target['fields']:
+            if source['fields'][field_name] != target['fields'][field_name]:
+                output += "ALTER TABLE `%s` MODIFY COLUMN %s;\n" % (source['name'],
+                                                              describe_field(target['fields'][field_name]))
+        else:
+            output += '%sALTER TABLE `%s` DROP COLUMN `%s`;\n' % (no_loss, source['name'], field_name)
+    last = None
+    for (name, field) in target['fields'].items():
+        if name not in source['fields']:
+            if last:
+                column_order = "AFTER `%s`" % last
+            else:
+                column_order = "FIRST"
+            output += 'ALTER TABLE `%s` ADD COLUMN %s %s;\n' % (source['name'],
+                                                       describe_field(field), column_order)
+        last = name
+
+    # 2.2. compare fk
+    if not no_foreign_key:
+        for key_hash in source['fk']:
+            if key_hash not in target['fk']:
+                output += '%sALTER TABLE `%s` DROP FOREIGN KEY `%s`;\n' % (no_loss, target['name'],
+                                                                     target['fk'][key_hash]['name'])
+
+        for key_hash in target['fk']:
+            if key_hash not in source['fk']:
+                output += 'ALTER TABLE `%s` ADD CONSTRAINT `%s` FOREIGN KEY (%s) REFERENCES `%s` (%s);\n' \
+                      % (target['name'], target['fk'][key_hash]['name'],
+                         get_quoted_fields(target['fk'][key_hash]['k']),
+                         target['fk'][key_hash]['table'],
+                         get_quoted_fields(target['fk'][key_hash]['fk']))
+    # 2.3. compare uk
+    for key_type in [{'name': 'UNIQUE INDEX', 'id': 'uk'}, {'name': 'FULLTEXT KEY', 'id': 'ft'}]:
+        for key_name in source[key_type['id']]:
+            if key_name not in target[key_type['id']]:
+                output += '-- %s (%s) \n' % (key_type['name'], ', '.join(source[key_type['id']][key_name]['fields']))
+                index_name = source[key_type['id']][key_name]['name']
+                if index_name == '':
+                    output += '-- %s (%s) \n' % (key_type['name'], ', '.join(source[key_type['id']][key_name]['fields']))
+                else:
+                    output += '%sALTER TABLE %s DROP INDEX `%s`;\n' % (no_loss, source['name'],
+                                                                 source[key_type['id']][key_name]['name'])
+
+        for key_name in target[key_type['id']]:
+            if key_name not in source[key_type['id']]:
+                index_name = target[key_type['id']][key_name]['name']
+                if index_name == '':
+                    index_name = key_name
+                output += 'ALTER TABLE %s ADD %s `%s` (%s);\n' % (
+                    target['name'], key_type['name'], index_name,
+                    ', '.join(target[key_type['id']][key_name]['fields']))
+    # 2.4. compare pk
+    if source['pk'] != target['pk']:
+        output += 'ALTER TABLE %s DROP PRIMARY KEY;\n' % source['name']
+        output += 'ALTER TABLE %s ADD PRIMARY KEY (%s);\n' % (source['name'], ', '.join(target['pk']))
+
+    return output
 
 
 def analyse_file(lines, table_prefix=""):
